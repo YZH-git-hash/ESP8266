@@ -1,41 +1,41 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <SoftwareSerial.h>
-// ============ 用户配置 ============
-// WiFi连接信息
-const char* ssid = "Y";
-const char* password = "2271911458";
+// ============ WiFi connection info ============
+// WiFi SSID and password
+const char* ssid = "your 2.4G Hz wifi SSID";
+const char* password = "your password";
 
-// 阿里云 MQTT 连接配置
+// IOT platform info
 const char* mqtt_server = "your mqttserver";
 const int mqtt_port = ;
 const char* mqtt_client_id = "your clientid";
 const char* mqtt_username = "your username";
 const char* mqtt_password = "your password";
 
-// 发布topic
+// IOT topic
 const char* publish_topic = "your topic";
 
-// ============ HCHO传感器串口配置 ============
-#define SENSOR_RX D5  // 软件串口接收引脚
-#define SENSOR_TX D6  // 软件串口发送引脚
+// ============ ZE08-C2HO UART config ============
+#define SENSOR_RX D5  // RXD
+#define SENSOR_TX D6  // TXD
 
 SoftwareSerial sensorSerial(SENSOR_RX, SENSOR_TX); // RX, TX
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-// 函数原型
+// Function prototypes
 void reconnect();
 void sendSensorData();
 
-// ============ 初始化 ============
+// ============ initialize ============
 void setup() 
 {
   Serial.begin(115200);
   sensorSerial.begin(9600);
 
   WiFi.begin(ssid, password);
-  Serial.print("连接 WiFi");
+  Serial.print("connecting to  WiFi");
 
   while (WiFi.status() != WL_CONNECTED) 
   {
@@ -45,14 +45,14 @@ void setup()
     break;//新增
   }
 
-  Serial.println("\n✅ WiFi已连接");
-  Serial.print("IP地址: ");
+  Serial.println("\n✅ WiFi connected");
+  Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
   client.setServer(mqtt_server, mqtt_port);
 }
 
-// ============ 主循环 ============
+// ============ loop ============
 void loop()
 {
   if (!client.connected())
@@ -66,22 +66,22 @@ void loop()
   if (millis() - lastSend > 5000)
    {
     lastSend = millis();
-    sendSensorData(); // 每5秒发送一次
+    sendSensorData(); // refreshing every 5S
   }
 }
 
-// ============ 重连MQTT ============
+// ============ reconnect MQTT ============
 void reconnect() 
 {
   while (!client.connected()) 
   {
-    Serial.print("尝试连接MQTT...");
+    Serial.print("attempting connecting to MQTT...");
     if (client.connect(mqtt_client_id, mqtt_username, mqtt_password)) 
     {
-      Serial.println("✅ MQTT连接成功");
+      Serial.println("✅ MQTT connecting successed");
     } 
     else {
-      Serial.print("❌ 失败，rc=");
+      Serial.print("❌ failed，rc=");
       Serial.println(client.state());
       delay(3000);
       break;//新增
@@ -89,15 +89,14 @@ void reconnect()
   }
 }
 
-// ============ 读取并上传甲醛浓度 ============
+// ============ upload C2HO DATA ============
 void sendSensorData()
  {
   uint8_t buffer[9];
 
-  // 清空缓冲区
+  // clear buffer
   while (sensorSerial.available()) sensorSerial.read();
 
-  // 等待完整数据帧
   int index = 0;
   unsigned long start = millis();
   while (index < 9 && millis() - start < 1000)
@@ -113,34 +112,33 @@ void sendSensorData()
     uint8_t checksum = ~(buffer[1] + buffer[2] + buffer[3] + buffer[4] + buffer[5] + buffer[6] + buffer[7]) + 1;
     if (checksum == buffer[8]) 
     {
-      uint16_t concentration = (buffer[4] << 8) | buffer[5]; // 高位 + 低位
-
-      // 打印甲醛浓度
+      uint16_t concentration = (buffer[4] << 8) | buffer[5]; 
+     //Formaldehyde concentration
       float mg = concentration / 1000.0;
-      Serial.print("🌫️ 甲醛浓度: ");
+      Serial.print("🌫️ C2HO  concentration: ");
       Serial.print(mg);
       Serial.println(" mg/m³");
 
-      // 构造 JSON 数据上传
+      //  JSON DATA
       String payload = "{\"id\":\"1\",\"version\":\"1.0\",\"params\":{\"HCHO\":" + String(mg, 3) + "},\"method\":\"thing.event.property.post\"}";
 
         if (client.publish(publish_topic, payload.c_str()))
         {
-          Serial.println("📡 数据已上传阿里云");
+          Serial.println("📡 Upload to IOT Platform");
         } 
 
         else
         {
-          Serial.println("❌ 数据上传失败");
+          Serial.println("❌ DATA upload success");
         }
     }
      else 
      {
-      Serial.println("❌ 校验失败，数据被丢弃");
+      Serial.println("❌ The verification fails, and the data is discarded");
     }
   } 
   else 
   {
-    Serial.println("❌ 接收超时或格式错误");
+    Serial.println("❌ Receive timeout or format error");
   }
 }
